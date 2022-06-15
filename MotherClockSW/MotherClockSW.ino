@@ -1,5 +1,5 @@
-// Copyright (C) 2021 Stephan Martin
-// This file is part of Mother Clock <https://www.designer2k2.at>.
+// Copyright (C) 2021 Stephan Martin <https://www.designer2k2.at>
+// This file is part of Mother Clock <https://github.com/designer2k2/Mutteruhr>.
 //
 // Mother Clock is free software and hardware: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -12,7 +12,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Mother Clock.  If not, see <http://www.gnu.org/licenses/>.
+// along with Mother myRTC.  If not, see <http://www.gnu.org/licenses/>.
 
 /*
    Mother Clock
@@ -23,6 +23,8 @@
      Arduino Nano Every, no register emulation.
      DS3231 module with AT24C32 memory
      Optional Oled 128x64 SSD1306
+
+   https://github.com/designer2k2/Mutteruhr
 
    https://www.designer2k2.at
    Stephan Martin 2021
@@ -80,7 +82,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 // Initilaize using AT24CXX(i2c_address, size of eeprom in KB).
 AT24Cxx eep(i2c_address, 32);
 
-DS3231 clock;
+DS3231 myRTC;
 
 // Parameters:
 const long pulsetime = 200;            // Pulse time in milliseconds (200-800?)
@@ -138,14 +140,14 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(2), isr1hz, FALLING);
 
   // DS3231 set that SQW outputs 1Hz:
-  clock.enableOscillator(true, false, 0);
-  clock.enable32kHz(false);
+  myRTC.enableOscillator(true, false, 0);
+  myRTC.enable32kHz(false);
 
   // Interrupt on Button A to drive the clock manually:
   attachInterrupt(digitalPinToInterrupt(7), isrbuttonA, FALLING);
 
   // Preload the seconds from the DS3231:
-  isrcounter = clock.getSecond();
+  isrcounter = myRTC.getSecond();
 
 
   // Read the EEPROM to the Serial:
@@ -183,7 +185,7 @@ void loop() {
     display.clearDisplay();
     display.setCursor(0, 0);
     display.println(isrcounter);
-    display.println(clock.getTemperature(), 2);
+    display.println(myRTC.getTemperature(), 2);
     display.display();
     // If the minute is full, give a pulse and reset:
     if (isrcounter >= 60) {
@@ -277,7 +279,7 @@ void pulse() {
 // Some things to do every minute:
 void minutecheck() {
   // Min Temp save to eeprom
-  uint8_t actual_temp = (int) clock.getTemperature();
+  uint8_t actual_temp = (int) myRTC.getTemperature();
   if (eep.read(110) > actual_temp) {
     eep.write(110, actual_temp);
     debugp(F("cold "));
@@ -293,7 +295,7 @@ void minutecheck() {
   }
 
   // hour counter increase if minute is 0
-  if (clock.getMinute() == 0) {
+  if (myRTC.getMinute() == 0) {
     byte buf[4];
     buf[1] = eep.read(101);
     buf[2] = eep.read(102);
