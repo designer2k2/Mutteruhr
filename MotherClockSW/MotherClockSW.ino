@@ -142,7 +142,7 @@ void setup() {
   myRTC.enable32kHz(false);
 
   // Read in DIP 1 to decide the operation mode:
-  dip1stateonpoweron = digitalRead(5);
+  dip1stateonpoweron = digitalRead(4);
 
 
   if (dip1stateonpoweron) {
@@ -235,14 +235,21 @@ void loop() {
     } else {
       // If the minute is full, give a pulse and reset:
       if (isrcounter >= 60) {
-        updateDisplay();
-        isrcounter = myRTC.getSecond(); // sync counter from RTC
         debugln(F("m"));
         pulse();
         minutecheck();
       } else {
         delay(1000);  //wait 1sec (not accurate, but will be synced)
         isr1hz(); //increase second counter
+        updateDisplay();
+      }
+      if (isrcounter % 5 == 0) {
+        if (isrcounter >= 60) {
+          debugln(F("m2"));
+          pulse();
+          minutecheck();
+          isrcounter = myRTC.getSecond(); // sync counter from RTC
+        }
       }
     }
 
@@ -260,20 +267,22 @@ void updateDisplay()
   display.clearDisplay();
   display.setCursor(0, 0);
   display.println(isrcounter);
-  display.println(myRTC.getTemperature(), 2);
   display.print(myRTC.getYear(), DEC);
-  display.print(" ");
+  display.print(".");
   display.print(myRTC.getMonth(century), DEC);
-  display.print(" ");
+  display.print(".");
   display.print(myRTC.getDate(), DEC);
-  display.print(" ");
+  display.print(" (");
   display.print(myRTC.getDoW(), DEC);
-  display.println(" ");
+  display.print(") - ");
   display.print(myRTC.getHour(h12Flag, pmFlag), DEC);
-  display.print(" ");
+  display.print(":");
   display.print(myRTC.getMinute(), DEC);
-  display.print(" ");
-  display.print(myRTC.getSecond(), DEC);
+  display.print(":");
+  display.println(myRTC.getSecond(), DEC);
+  display.print("Temp: ");
+  display.print(myRTC.getTemperature(), 2);
+  display.print(" C");
   display.display();
 }
 
