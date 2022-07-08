@@ -89,6 +89,7 @@ const long pulsetime = 200;            // Pulse time in milliseconds (200-800?)
 const float minimumsupplyvolt = 20.0; // Minimum voltage to activate pulse
 
 // Global variables:
+bool dip1stateonpoweron = false;  // State of the DIP1 state during power up
 volatile bool btogglepin = false;  //Stores the last step polarity
 volatile int isrcounter = 0;  // counts up in second interval
 
@@ -109,13 +110,13 @@ void setup() {
   pinMode(10, OUTPUT);
 
   //Buttons / Switches / Clock Inputs:
-  pinMode(2, INPUT_PULLUP);
-  pinMode(3, INPUT_PULLUP);
-  pinMode(4, INPUT_PULLUP);
-  pinMode(5, INPUT_PULLUP);
-  pinMode(6, INPUT_PULLUP);
-  pinMode(7, INPUT_PULLUP);
-  pinMode(8, INPUT_PULLUP);
+  pinMode(2, INPUT_PULLUP);   // DS3231 SQW (1HZ)
+  pinMode(3, INPUT_PULLUP);   // DW3231 32k
+  pinMode(4, INPUT_PULLUP);   // DIP 1
+  pinMode(5, INPUT_PULLUP);   // DIP 2
+  pinMode(6, INPUT_PULLUP);   // DIP 3
+  pinMode(7, INPUT_PULLUP);   // SWITCH A
+  pinMode(8, INPUT_PULLUP);   // SWITCH B
 
   // LED output:
   pinMode(21, OUTPUT);
@@ -136,19 +137,27 @@ void setup() {
   display.println(F("Motherclock ON"));
   display.display();
 
-  // Interrup from the DS3231 module 1Hz Signal:
-  attachInterrupt(digitalPinToInterrupt(2), isr1hz, FALLING);
-
-  // DS3231 set that SQW outputs 1Hz:
+  // DS3231 set that SQW outputs 1Hz only when power is on:
   myRTC.enableOscillator(true, false, 0);
   myRTC.enable32kHz(false);
 
-  // Interrupt on Button A to drive the clock manually:
-  attachInterrupt(digitalPinToInterrupt(7), isrbuttonA, FALLING);
+  // Read in DIP 1 to decide the operation mode:
+  dip1stateonpoweron = digitalRead(5);
+
+
+  if (dip1stateonpoweron) {
+    debugln("Running in interrupt mode");
+    // Interrup from the DS3231 module 1Hz Signal:
+    attachInterrupt(digitalPinToInterrupt(2), isr1hz, FALLING);
+
+    // Interrupt on Button A to drive the clock manually:
+    attachInterrupt(digitalPinToInterrupt(7), isrbuttonA, FALLING);
+  } else {
+    debugln("Running without interrupts");
+  }
 
   // Preload the seconds from the DS3231:
   isrcounter = myRTC.getSecond();
-
 
   // Read the EEPROM to the Serial:
   debugp(F("warm "));
@@ -163,6 +172,22 @@ void setup() {
   unsigned long var = (unsigned long)(buf[4] << 24) | (buf[3] << 16) | (buf[2] << 8) | buf[1];
   debugp(F("hours "));
   debugln(var);
+
+  // Read the RTC Time to the Serial:
+  bool century = false;
+  bool h12Flag;
+  bool pmFlag;
+  debugp((int)myRTC.getYear());
+  debugp('/');
+  debugp((int)myRTC.getMonth(century));
+  debugp('/');
+  debugp((int)myRTC.getDate());
+  debugp(' ');
+  debugp((int)myRTC.getHour(h12Flag, pmFlag));
+  debugp(':');
+  debugp((int)myRTC.getMinute());
+  debugp(':');
+  debugln((int)myRTC.getSecond());
   debugfl();
 }
 
@@ -170,37 +195,86 @@ void loop() {
   debugln(F("w"));
   debugfl();
 
-  // Button press woke it up:
-  if (buttonA) {
-    pulse();
-    delay(100); // delay to give the clock time to react
-    //And only if the button is released reset this
-    if (digitalRead(7) == HIGH) {
-      buttonA = false;
-      digitalWrite(LED_BUILTIN, LOW);
+  if (dip1stateonpoweron) {
+    // Button press woke it up:
+    if (buttonA) {
+      pulse();
+      delay(100); // delay to give the clock time to react
+      //And only if the button is released reset this
+      if (digitalRead(7) == HIGH) {
+        buttonA = false;
+        digitalWrite(LED_BUILTIN, LOW);
+      }
+    } else {
+      // The 1Hz trigger woke it up:
+      updateDisplay();
+      // If the minute is full, give a pulse and reset:
+      if (isrcounter >= 60) {
+        isrcounter = 0;
+        debugln(F("m"));
+        pulse();
+        minutecheck();
+      }
+    }
+
+    // If button A is released go to sleep for 1 second, with the 1 second pulse from the DS3231 RTC:
+    if (!buttonA) {
+      enterSleep();
     }
   } else {
-    // The 1Hz trigger woke it up:
-    // Display the counter and current temperature:
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.println(isrcounter);
-    display.println(myRTC.getTemperature(), 2);
-    display.display();
-    // If the minute is full, give a pulse and reset:
-    if (isrcounter >= 60) {
-      isrcounter = 0;
-      debugln(F("m"));
+    // running in a sleepless mode
+    if (digitalRead(7) == LOW) {
+      // Button pressed, generate pulse:
+      digitalWrite(LED_BUILTIN, HIGH);
       pulse();
-      minutecheck();
+      delay(100); // delay to give the clock time to react
+      //And only if the button is released reset this
+      if (digitalRead(7) == HIGH) {
+        digitalWrite(LED_BUILTIN, LOW);
+      }
+    } else {
+      // If the minute is full, give a pulse and reset:
+      if (isrcounter >= 60) {
+        updateDisplay();
+        isrcounter = myRTC.getSecond(); // sync counter from RTC
+        debugln(F("m"));
+        pulse();
+        minutecheck();
+      } else {
+        delay(1000);  //wait 1sec (not accurate, but will be synced)
+        isr1hz(); //increase second counter
+      }
     }
+
   }
 
-  // If button A is released go to sleep for 1 second, with the 1 second pulse from the DS3231 RTC:
-  if (!buttonA) {
-    enterSleep();
-  }
+}
 
+// Display update:
+void updateDisplay()
+{
+  // Display the counter and current temperature:
+  bool century = false;
+  bool h12Flag;
+  bool pmFlag;
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println(isrcounter);
+  display.println(myRTC.getTemperature(), 2);
+  display.print(myRTC.getYear(), DEC);
+  display.print(" ");
+  display.print(myRTC.getMonth(century), DEC);
+  display.print(" ");
+  display.print(myRTC.getDate(), DEC);
+  display.print(" ");
+  display.print(myRTC.getDoW(), DEC);
+  display.println(" ");
+  display.print(myRTC.getHour(h12Flag, pmFlag), DEC);
+  display.print(" ");
+  display.print(myRTC.getMinute(), DEC);
+  display.print(" ");
+  display.print(myRTC.getSecond(), DEC);
+  display.display();
 }
 
 // Sleep mode handler:
