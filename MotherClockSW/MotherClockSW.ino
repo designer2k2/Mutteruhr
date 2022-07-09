@@ -12,7 +12,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Mother myRTC.  If not, see <http://www.gnu.org/licenses/>.
+// along with Mother Clock.  If not, see <http://www.gnu.org/licenses/>.
 
 /*
    Mother Clock
@@ -27,7 +27,7 @@
    https://github.com/designer2k2/Mutteruhr
 
    https://www.designer2k2.at
-   Stephan Martin 2021
+   Stephan Martin 2021-2022
 */
 
 
@@ -77,10 +77,9 @@
 #define SCREEN_ADDRESS 0x3C
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-
-#define i2c_address 0x57
+#define memory_i2c_address 0x57
 // Initilaize using AT24CXX(i2c_address, size of eeprom in KB).
-AT24Cxx eep(i2c_address, 32);
+AT24Cxx eep(memory_i2c_address, 32);
 
 DS3231 myRTC;
 
@@ -125,17 +124,25 @@ void setup() {
   // Analog input reference to VDD 5V:
   analogReference(VDD);
 
+  // I2C Scan:
+  i2c_device_scan();
+
   // Display:
   if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     debugln(F("SSD1306 allocation failed"));
   }
   // Clear the buffer
   display.clearDisplay();
-  display.setTextSize(1);      // Normal 1:1 pixel scale
+  display.setTextSize(2);      // Normal 1:1 pixel scale
   display.setTextColor(SSD1306_WHITE); // Draw white text
   display.setCursor(0, 0);     // Start at top-left corner
   display.println(F("Motherclock ON"));
   display.display();
+  delay(1000);
+  // Power supply check:
+  powerok();
+  delay(1000);
+
 
   // DS3231 set that SQW outputs 1Hz only when power is on:
   myRTC.enableOscillator(true, false, 0);
@@ -239,7 +246,7 @@ void loop() {
         pulse();
         minutecheck();
       } else {
-        delay(1000);  //wait 1sec (not accurate, but will be synced)
+        delay(960);  //wait 1sec (estimated to be around 1eecond)
         isr1hz(); //increase second counter
         updateDisplay();
       }
@@ -252,9 +259,7 @@ void loop() {
         }
       }
     }
-
   }
-
 }
 
 // Display update:
@@ -266,23 +271,22 @@ void updateDisplay()
   bool pmFlag;
   display.clearDisplay();
   display.setCursor(0, 0);
-  display.println(isrcounter);
-  display.print(myRTC.getYear(), DEC);
-  display.print(".");
-  display.print(myRTC.getMonth(century), DEC);
-  display.print(".");
-  display.print(myRTC.getDate(), DEC);
-  display.print(" (");
-  display.print(myRTC.getDoW(), DEC);
-  display.print(") - ");
+  display.print(F("("));
+  display.print(isrcounter);
+  display.println(F(")"));
   display.print(myRTC.getHour(h12Flag, pmFlag), DEC);
-  display.print(":");
+  display.print(F(":"));
   display.print(myRTC.getMinute(), DEC);
-  display.print(":");
+  display.print(F(":"));
   display.println(myRTC.getSecond(), DEC);
-  display.print("Temp: ");
+  display.print(myRTC.getYear(), DEC);
+  display.print(F("."));
+  display.print(myRTC.getMonth(century), DEC);
+  display.print(F("."));
+  display.println(myRTC.getDate(), DEC);
+  display.print(F("T: "));
   display.print(myRTC.getTemperature(), 2);
-  display.print(" C");
+  display.print(F(" C"));
   display.display();
 }
 
@@ -394,4 +398,48 @@ void minutecheck() {
     debugln(var);
     debugfl();
   }
+}
+
+// I2C Scanner, to check if all is connected:
+bool i2c_device_scan() {
+  byte error, address;
+  bool all_ok;
+
+  all_ok = true;
+
+  address = memory_i2c_address;
+  Wire.beginTransmission(address);
+  error = Wire.endTransmission();
+  if (error == 0) {
+    // found memory
+    debugln(F("I2C Memory found"));
+  } else {
+    // no memory found
+    debugln(F("I2C Memory missing"));
+    all_ok = false;
+  }
+  address = SCREEN_ADDRESS;
+  Wire.beginTransmission(address);
+  error = Wire.endTransmission();
+  if (error == 0) {
+    // found screen
+    debugln(F("I2C Screen found"));
+  } else {
+    // no screen found
+    debugln(F("I2C Screen missing"));
+    all_ok = false;
+  }
+  address = 0x68;
+  Wire.beginTransmission(address);
+  error = Wire.endTransmission();
+  if (error == 0) {
+    // found rtc
+    debugln(F("I2C RTC found"));
+  } else {
+    // no rtc found
+    debugln(F("I2C RTC missing"));
+    all_ok = false;
+  }
+
+  return all_ok;
 }
