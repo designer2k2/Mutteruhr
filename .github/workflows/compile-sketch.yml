@@ -1,0 +1,28 @@
+name: Compile Sketch
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  compile-sketch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Compile 
+        uses: arduino/compile-sketches@main
+        with:
+          platforms: |
+            - name: arduino:mega
+          sketch-paths: |
+            - MotherClockSW
+          fqbn: arduino:megaavr:nona4809
+          libraries: |
+            - name: "DS3231"
+            - name: "AT24Cxx"
+            - name: "Adafruit GFX Library"
+            - name: "Adafruit SSD1306"
+            
