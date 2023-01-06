@@ -16,7 +16,7 @@ jobs:
         uses: arduino/compile-sketches@main
         with:
           platforms: |
-            - name: arduino:mega
+            - name: arduino:megaavr
           sketch-paths: |
             - MotherClockSW
           fqbn: arduino:megaavr:nona4809
